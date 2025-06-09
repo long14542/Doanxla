@@ -5,9 +5,9 @@ import time
 import os
 
 PIXEL_TO_MM = 12.96
-TRUC_X = 290.14
-TRUC_Y = 53.72
-IMG_PATH = r"C:\\Users\\Admin\\OneDrive - Hanoi University of Science and Technology\\Documents\\RPMEC\\Doanxla\\Image_20250607171959995.JPG"
+TRUC_X = 270
+TRUC_Y = 84.5
+IMG_PATH = r"C:\\Users\\Admin\\OneDrive - Hanoi University of Science and Technology\\Documents\\RPMEC\\Doanxla\\Image_20250609164416216.jpg"
 OUT_PATH = "output_detected.jpg"
 
 def detect_objects(image_path, draw_result=True):
@@ -18,21 +18,34 @@ def detect_objects(image_path, draw_result=True):
     hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
 
     masks = {
-        "red":  cv2.inRange(hsv, (0, 100, 100), (10, 255, 255)) | cv2.inRange(hsv, (160, 100, 100), (180, 255, 255)),
-        "blue": cv2.inRange(hsv, (100, 100, 100), (130, 255, 255))
+        "red":    cv2.inRange(hsv, (0, 100, 100), (10, 255, 255)) | cv2.inRange(hsv, (160, 100, 100), (180, 255, 255)),
+        "blue":   cv2.inRange(hsv, (100, 100, 100), (130, 255, 255)),
+        "yellow": cv2.inRange(hsv, (20, 100, 100), (35, 255, 255)),
+        "green":  cv2.inRange(hsv, (40, 100, 100), (85, 255, 255))
     }
-    color_map = {"red": (0, 0, 255), "blue": (255, 0, 0)}
+    color_map = {
+        "red": (0, 0, 255),
+        "blue": (255, 0, 0),
+        "yellow": (0, 255, 255),
+        "green": (0, 255, 0)
+    }
     objects = []
+    kernel = np.ones((9, 9), np.uint8)  # Tăng kernel cho closing nếu vật thể lớn
+
     for color, mask in masks.items():
+        # Áp dụng closing để làm liền mạch vùng vật thể
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+
+        # Chỉ lấy contour ngoài cùng
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         for cnt in contours:
             area = cv2.contourArea(cnt)
-            if area > 100:
+            if area > 5000:  # Lọc diện tích nhỏ, tránh nhận vật thể phụ
                 M = cv2.moments(cnt)
                 if M['m00'] == 0: continue
                 cx, cy = int(M['m10']/M['m00']), int(M['m01']/M['m00'])
                 x, y, w, h = cv2.boundingRect(cnt)
-                aspect = w / h
+                aspect = w / h if h != 0 else 0
 
                 # Phân loại hình và kích thước
                 if 0.9 <= aspect <= 1.1:
@@ -56,7 +69,7 @@ def detect_objects(image_path, draw_result=True):
                 if draw_result:
                     rect = cv2.minAreaRect(cnt)
                     box = cv2.boxPoints(rect)
-                    box = box.astype(int)   # Sửa lỗi np.int0
+                    box = box.astype(int)
                     cv2.drawContours(image, [box], 0, color_map[color], 2)
                     label_pos = tuple(box[1])
                     cv2.putText(image, detail, label_pos, cv2.FONT_HERSHEY_SIMPLEX, 0.7, color_map[color], 2, cv2.LINE_AA)
@@ -93,7 +106,8 @@ def pixel_to_robot(pixel, img_shape):
     px, py = pixel
     X = px / PIXEL_TO_MM + TRUC_X
     Y = TRUC_Y - py / PIXEL_TO_MM
-    Z, R = -100, 0
+    Z = -135
+    R = 0
     return X, Y, Z, R
 
 def main():
@@ -122,14 +136,64 @@ def main():
         robot.movej(400, -15, 0, 0)           # Về vị trí trung gian
         robot.movej(x, y, z+50, r)            # Đến trên vật thể
         robot.movel(x, y, z, r)               # Hạ xuống lấy vật thể
+        time.sleep(1)                          
+        robot.send(robot.motion, "DO(1,1)")  # Bật hút
         robot.movel(x, y, z+50, r)            # Nhấc lên
         time.sleep(0.5)
-        if obj['color'] == "red":
-            robot.movej(350, -170, 0, 0)      # Thả vật đỏ
-        elif obj['color'] == "blue":
-            robot.movej(350, 162, 0, 0)       # Thả vật xanh
+        # RED
+        if obj['color'] == "red" and obj['detail'] == "small square":
+            robot.movej(350, -170, 0, 0)
+            robot.send(robot.motion, "DO(1,0)")
+        elif obj['color'] == "red" and obj['detail'] == "large square":
+            robot.movej(350, -150, 0, 0)
+            robot.send(robot.motion, "DO(1,0)")
+        elif obj['color'] == "red" and obj['detail'] == "small rectangle":
+            robot.movej(350, -130, 0, 0)
+            robot.send(robot.motion, "DO(1,0)")
+        elif obj['color'] == "red" and obj['detail'] == "large rectangle":
+            robot.movej(350, -110, 0, 0)
+            robot.send(robot.motion, "DO(1,0)")
+        # BLUE
+        elif obj['color'] == "blue" and obj['detail'] == "small square":
+            robot.movej(350, 162, 0, 0)
+            robot.send(robot.motion, "DO(1,0)")
+        elif obj['color'] == "blue" and obj['detail'] == "large square":
+            robot.movej(350, 142, 0, 0)
+            robot.send(robot.motion, "DO(1,0)")
+        elif obj['color'] == "blue" and obj['detail'] == "small rectangle":
+            robot.movej(350, 122, 0, 0)
+            robot.send(robot.motion, "DO(1,0)")
+        elif obj['color'] == "blue" and obj['detail'] == "large rectangle":
+            robot.movej(350, 102, 0, 0)
+            robot.send(robot.motion, "DO(1,0)")
+        # YELLOW
+        elif obj['color'] == "yellow" and obj['detail'] == "small square":
+            robot.movej(300, 50, 0, 0)
+            robot.send(robot.motion, "DO(1,0)")
+        elif obj['color'] == "yellow" and obj['detail'] == "large square":
+            robot.movej(300, 70, 0, 0)
+            robot.send(robot.motion, "DO(1,0)")
+        elif obj['color'] == "yellow" and obj['detail'] == "small rectangle":
+            robot.movej(300, 90, 0, 0)
+            robot.send(robot.motion, "DO(1,0)")
+        elif obj['color'] == "yellow" and obj['detail'] == "large rectangle":
+            robot.movej(300, 110, 0, 0)
+            robot.send(robot.motion, "DO(1,0)")
+        # GREEN
+        elif obj['color'] == "green" and obj['detail'] == "small square":
+            robot.movej(300, 130, 0, 0)
+            robot.send(robot.motion, "DO(1,0)")
+        elif obj['color'] == "green" and obj['detail'] == "large square":
+            robot.movej(300, 150, 0, 0)
+            robot.send(robot.motion, "DO(1,0)")
+        elif obj['color'] == "green" and obj['detail'] == "small rectangle":
+            robot.movej(300, 170, 0, 0)
+            robot.send(robot.motion, "DO(1,0)")
+        elif obj['color'] == "green" and obj['detail'] == "large rectangle":
+            robot.movej(300, 190, 0, 0)
+            robot.send(robot.motion, "DO(1,0)")
         else:
-            print("Không xác định màu!")
+            print("Không xác định màu hoặc loại vật thể!")
     time.sleep(0.5)
     robot.movej(400, -15, 0, 0)
     robot.close()
